@@ -1,0 +1,14 @@
+[package]
+name = "dots"
+version = "0.1.0"
+authors = ["Reed Debaets <reed.debaets@mtf.co.nz>"]
+
+[[bin]]
+name = "dots"
+
+[dependencies]
+piston = "*"
+piston2d-graphics = "*"
+pistoncore-glutin_window = "*"
+piston2d-opengl_graphics = "*"
+rand = "*"
