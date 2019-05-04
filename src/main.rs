@@ -12,7 +12,6 @@ extern crate opengl_graphics;
 extern crate piston;
 extern crate rand;
 
-use std::thread;
 use piston::event_loop::*;
 use piston::input::*;
 

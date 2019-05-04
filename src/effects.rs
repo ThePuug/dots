@@ -2,8 +2,8 @@ use common::coord::Coord;
 
 pub struct Effect {
     pub pos: Option<Coord>,
-    pub effect: EffectType,
-    pub intensity: f32
+    pub typ: Option<EffectType>,
+    pub val: Option<f32>
 }
 
 #[derive(PartialEq, Eq, Copy, Clone)]

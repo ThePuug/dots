@@ -1,4 +1,5 @@
 use rand::Rng;
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use common::coord::Coord;
@@ -11,50 +12,78 @@ pub struct Dot {
 }
 
 impl Dot {
-    pub fn act(&self) -> Action {
-        let act: Action = rand::random();
-        return act;
+    pub fn new(pos: Coord, color: [f32;4]) -> Dot {
+        return Dot {
+            pos,
+            color
+        };
     }
 
-    pub fn tick(&self, tx: Sender<Effect>) {
-//        println!("doing TICK");
+    pub fn sense(&self) -> Arc<Vec<Arc<Effect>>> {
+        return Arc::new(vec![
+            Arc::new(Effect { pos: Some(Coord { x: self.pos.x-1.0, y: self.pos.y-0.0 }), typ: Some(EffectType::OPACITY), val: None }),
+            Arc::new(Effect { pos: Some(Coord { x: self.pos.x-0.0, y: self.pos.y-1.0 }), typ: Some(EffectType::OPACITY), val: None }),
+            Arc::new(Effect { pos: Some(Coord { x: self.pos.x+1.0, y: self.pos.y+0.0 }), typ: Some(EffectType::OPACITY), val: None }),
+            Arc::new(Effect { pos: Some(Coord { x: self.pos.x+0.0, y: self.pos.y+1.0 }), typ: Some(EffectType::OPACITY), val: None })
+        ]);
+    }
+
+    pub fn act(&self, cause: Arc<Vec<Arc<Effect>>>, tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>) {
+        let act: Action = rand::random();
+        match act {
+            Action::DARKEN => {
+                match self.reach(1) {
+                    Some(pos) => {
+                        match tx.send((cause,Arc::new(Effect {
+                            pos: Some(pos),
+                            typ: Some(EffectType::OPACITY),
+                            val: Some(0.1)
+                        }))) {
+                            Ok(_) => {},
+                            Err(msg) => println!("{}",msg)
+                        }
+                    },
+                    None => {}
+                };
+            },
+            Action::LIGHTEN => {
+                match self.reach(1) {
+                    Some(pos) => {
+                        match tx.send((cause,Arc::new(Effect {
+                            pos: Some(pos),
+                            typ: Some(EffectType::OPACITY),
+                            val: Some(-0.1)
+                        }))) {
+                            Ok(_) => {},
+                            Err(msg) => println!("{}",msg)
+                        }
+                    },
+                    None => {}
+                };
+            },
+            _ => {}
+        };
+    }
+
+    pub fn tick(&self, tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>) {
         if self.is_alive() {
-            match self.act() {
-                Action::DARKEN => {
-                    match self.reach(1) {
-                        Some(pos) => {
-//                            println!("DARKEN {},{}",pos.x,pos.y);
-                            tx.send(Effect {
-                                pos: Some(pos),
-                                effect: EffectType::OPACITY,
-                                intensity: 0.1
-                            });
-                        },
-                        None => {}
-                    };
-                },
-                Action::LIGHTEN => {
-                    match self.reach(1) {
-                        Some(pos) => {
-//                            println!("LIGHTEN {},{}",pos.x,pos.y);
-                            tx.send(Effect {
-                                pos: Some(pos),
-                                effect: EffectType::OPACITY,
-                                intensity: -0.1
-                            });
-                        },
-                        None => {}
-                    };
-                },
-                _ => {}
-            };
+            let cause = self.sense();
+            match tx.send((cause,Arc::new(Effect { pos: Some(self.pos), typ: None, val: None }))) {
+                Ok(_) => {},
+                Err(msg) => println!("{}",msg)
+            }
         }
     }
 
-    pub fn update(&mut self, tx: Sender<Effect>, property: EffectType, intensity: f32) {
-        match property {
-            EffectType::TICK => self.tick(tx),
-            EffectType::OPACITY => self.color[3] += intensity
+    pub fn update(&mut self, tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>, effect: Arc<Effect>) {
+        match effect.typ {
+            Some(typ) => {
+                match typ {
+                    EffectType::TICK => self.tick(tx),
+                    EffectType::OPACITY => self.color[3] += effect.val.unwrap()
+                }
+            },
+            None => {}
         }
     }
 
