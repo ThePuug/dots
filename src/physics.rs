@@ -1,85 +1,73 @@
-use std::collections::HashMap;
 use std::collections::hash_map::Entry::{Occupied,Vacant};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::sync::mpsc::{Sender,Receiver};
 use std::sync::Mutex;
-use std::thread;
-use std::thread::JoinHandle;
 
 use common::coord::Coord;
+use common::threadpool::ThreadPool;
 use dots::Dot;
 use effects::{Effect,EffectType};
+use scene::Scene;
 
 pub struct Physics {
-    pub tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
-    pub dots: Arc<Mutex<HashMap<Coord,Arc<Mutex<Dot>>>>>
+    pub scene: Scene,
+    rx: Receiver<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
+    tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
+    pool: ThreadPool
 }
 
 impl Physics {
-    pub fn new(dots: Arc<Mutex<HashMap<Coord,Arc<Mutex<Dot>>>>>) -> Physics {
+    pub fn new(pool: ThreadPool,
+               scene: Scene) -> Physics {
         let (tx, rx) = mpsc::channel();
-        let (tx_reaper,rx_reaper) = mpsc::channel();
 
         let physics = Physics {
-            tx: tx.clone(),
-            dots: dots.clone()
+            scene,
+            rx,
+            tx,
+            pool
         };
 
         // create the origin of life
-        match tx.send((Arc::new(Vec::new()),Arc::new(Effect {
-            pos: Some(Coord{x: 25.0, y:25.0}),
+        physics.queue((Arc::new(Vec::new()),Arc::new(Effect {
+            pos: Some(Coord{x: 5.0, y:5.0}),
             typ: Some(EffectType::OPACITY),
             val: Some(1.0)
-        }))) {
-            Ok(_) => {},
-            Err(msg) => println!("{}",msg)
-        }
+        })));
 
-        thread::spawn(move || Physics::start_reaper(rx_reaper));
-        thread::spawn(move || Physics::start(rx, tx.clone(), tx_reaper.clone(), dots.clone()));
-
-        return physics;
+        physics
     }
 
-    pub fn start_reaper(rx_reaper: Receiver<JoinHandle<()>>) {
-        for msg in rx_reaper {
-            match msg.join() {
-                Ok(_) => {},
-                Err(_) => println!("Failed to join")
-            }
-        }
+    pub fn queue(&self, msg: (Arc<Vec<Arc<Effect>>>,Arc<Effect>)) {
+        self.tx.send(msg).unwrap();
     }
 
-    pub fn start(rx: Receiver<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
-                 tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>, 
-                 tx_reaper: Sender<JoinHandle<()>>, 
-                 dots: Arc<Mutex<HashMap<Coord,Arc<Mutex<Dot>>>>>) {
-        for msg in rx {
-            let (causes,effect) = msg;
+    pub fn apply(&self) {
+        loop {
+            let msg = self.rx.try_recv();
+            if msg.is_err() { break; }
+            let (causes,effect) = msg.unwrap();
 
             match effect.pos {
                 // when the pos is not defined, then send the effect to all dots and continue
                 None => {
-                    let dots = dots.clone();
+                    let dots = self.scene.dots.clone();
                     for (_,dot) in dots.lock().unwrap().iter() {
                         let dot = dot.clone();
-                        let tx = tx.clone();
+                        let tx = self.tx.clone();
                         let effect = effect.clone();
-                        match tx_reaper.send(thread::spawn(move || {
+                        self.pool.run(move || {
                             let mut dot = dot.lock().unwrap();
                             dot.update(tx, effect);
-                        })) {
-                            Ok(_) => {},
-                            Err(msg) => println!("{}",msg)
-                        }
+                        });
                     }
                     continue;
                 }
 
                 // if the pos is defined ensure the dot exists
                 Some(pos) => {
-                    let dots = dots.clone();
+                    let dots = self.scene.dots.clone();
                     let mut dots = dots.lock().unwrap();
                     let mut dot: Arc<Mutex<Dot>>;
                     match dots.entry(pos) {
@@ -90,14 +78,11 @@ impl Physics {
                     // when the effect is defined, we want to update
                     match effect.typ {
                         Some(_) => {
-                            let tx = tx.clone();
-                            match tx_reaper.send(thread::spawn(move || {
+                            let tx = self.tx.clone();
+                            self.pool.run(move || {
                                 let mut dot = dot.lock().unwrap();
                                 dot.update(tx, effect);
-                            })) {
-                                Ok(_) => {},
-                                Err(msg) => println!("{}", msg)
-                            }
+                            });
                         },
 
                         // when the effect is undefined, then the dot is sensing
@@ -138,14 +123,11 @@ impl Physics {
                             }
 
                             // and ask the dot to respond
-                            let tx = tx.clone();
-                            match tx_reaper.send(thread::spawn(move || {
+                            let tx = self.tx.clone();
+                            self.pool.run(move || {
                                 let dot = dot.lock().unwrap();
-                                dot.act(Arc::new(ret_causes), tx);
-                            })) {
-                                Ok(_) => {},
-                                Err(msg) => println!("{}", msg)
-                            }
+                                dot.act(tx, Arc::new(ret_causes));
+                            });
                         }
                     }
                 },

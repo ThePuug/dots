@@ -1,4 +1,6 @@
 use rand::Rng;
+//use rusty_machine::learning::nnet::{NeuralNet, BCECriterion};
+//use rusty_machine::learning::optim::grad_desc::StochasticGD;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
@@ -8,7 +10,8 @@ use effects::{Effect,EffectType};
 
 pub struct Dot {
     pub pos: Coord,
-    pub color: [f32; 4]
+    pub color: [f32; 4],
+    // brain: Option<NeuralNet<'static, BCECriterion, StochasticGD>>
 }
 
 impl Dot {
@@ -16,6 +19,7 @@ impl Dot {
         return Dot {
             pos,
             color
+            // brain: None // if color[3] >= 0.5 { Some(NeuralNet::default(&[4,16,4,2])) } else { None }
         };
     }
 
@@ -28,7 +32,7 @@ impl Dot {
         ]);
     }
 
-    pub fn act(&self, cause: Arc<Vec<Arc<Effect>>>, tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>) {
+    pub fn act(&self, tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>, cause: Arc<Vec<Arc<Effect>>>) {
         let act: Action = rand::random();
         match act {
             Action::DARKEN => {

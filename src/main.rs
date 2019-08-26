@@ -11,16 +11,20 @@ extern crate graphics;
 extern crate opengl_graphics;
 extern crate piston;
 extern crate rand;
+extern crate rusty_machine;
 
 use piston::event_loop::*;
 use piston::input::*;
 
 use app::App;
+use common::coord::Coord;
+use common::threadpool::ThreadPool;
+use scene::Scene;
 
 fn main() {
 
     // Create a new game
-    let mut app = App::new();
+    let mut app = App::new(ThreadPool::new(4), Scene::new(Coord { x: 50.0, y: 50.0 }, 10));
     let mut es = EventSettings::new();
     es.set_ups(120);
     es.set_max_fps(60);
