@@ -1,37 +1,28 @@
-use glutin_window::GlutinWindow as Window;
-use opengl_graphics::{ GlGraphics, OpenGL };
+use glutin_window::GlutinWindow;
+use opengl_graphics::GlGraphics;
 use piston::input::{RenderArgs,UpdateArgs};
-use piston::window::WindowSettings;
 use std::sync::Arc;
 
-use common::threadpool::ThreadPool;
 use effects::{Effect,EffectType};
+use neuralnets::{INeuralNet,INeuralNetFactory};
 use physics::Physics;
-use scene::Scene;
 
-pub struct App {
+pub struct App<TNeuralNet,TNeuralNetFactory>
+    where TNeuralNet : INeuralNet,
+    TNeuralNetFactory : INeuralNetFactory<TNeuralNet> {
     pub gl: GlGraphics, // OpenGL drawing backend.
-    pub window: Window,
-    pub physics: Physics
+    pub window: GlutinWindow,
+    pub physics: Physics<TNeuralNet,TNeuralNetFactory>
 }
 
-impl App {
-    pub fn new(pool: ThreadPool,
-               scene: Scene) -> App {
-        // Change this to OpenGL::V2_1 if not working.
-        let opengl = OpenGL::V3_2;
-
-        let physics = Physics::new(pool, scene);
-
-        // Create an Glutin window.
-        let window: Window = WindowSettings::new("Dots",[physics.scene.size.x * physics.scene.scale as f64, physics.scene.size.y * physics.scene.scale as f64])
-            .opengl(opengl)
-            .exit_on_esc(true)
-            .vsync(true)
-            .build().unwrap();
-
-        return App {
-            gl: GlGraphics::new(opengl),
+impl<TNeuralNet,TNeuralNetFactory> App<TNeuralNet,TNeuralNetFactory> 
+    where TNeuralNet : INeuralNet, 
+    TNeuralNetFactory : INeuralNetFactory<TNeuralNet> {
+    pub fn new(physics: Physics<TNeuralNet,TNeuralNetFactory>,
+               window: GlutinWindow,
+               gl: GlGraphics) -> App<TNeuralNet,TNeuralNetFactory> {
+        App {
+            gl,
             window,
             physics
         }

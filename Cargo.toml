@@ -2,6 +2,7 @@
 name = "dots"
 version = "0.1.0"
 authors = ["Reed Debaets <reed.debaets@gmail.com>"]
+build = "build.rs"
 
 [[bin]]
 name = "dots"
@@ -12,4 +13,3 @@ piston2d-graphics = "*"
 pistoncore-glutin_window = "*"
 piston2d-opengl_graphics = "*"
 rand = "*"
-rusty-machine = "*"

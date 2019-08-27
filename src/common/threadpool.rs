@@ -72,7 +72,7 @@ impl Worker {
     }
 }
 
-type Job = Box<FnBox + Send + 'static>;
+type Job = Box<dyn FnBox + Send + 'static>;
 
 trait FnBox {
     fn call_box(self: Box<Self>);
@@ -80,7 +80,7 @@ trait FnBox {
 
 impl<F: FnOnce()> FnBox for F {
     fn call_box(self: Box<F>) {
-        (*self)()
+        (*self)();
     }
 }
 

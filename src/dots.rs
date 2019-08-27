@@ -1,26 +1,27 @@
-use rand::Rng;
-//use rusty_machine::learning::nnet::{NeuralNet, BCECriterion};
-//use rusty_machine::learning::optim::grad_desc::StochasticGD;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use common::coord::Coord;
 use action::Action;
 use effects::{Effect,EffectType};
+use neuralnets::{INeuralNet};
 
-pub struct Dot {
+pub struct Dot<TNeuralNet> 
+    where TNeuralNet : INeuralNet {
     pub pos: Coord,
     pub color: [f32; 4],
-    // brain: Option<NeuralNet<'static, BCECriterion, StochasticGD>>
+    neuralnet: TNeuralNet,
 }
 
-impl Dot {
-    pub fn new(pos: Coord, color: [f32;4]) -> Dot {
-        return Dot {
+impl<TNeuralNet> Dot<TNeuralNet>
+    where TNeuralNet : INeuralNet {
+    pub fn new(pos: Coord, color: [f32;4], neuralnet: TNeuralNet)
+        -> Dot<TNeuralNet> {
+        Dot {
             pos,
-            color
-            // brain: None // if color[3] >= 0.5 { Some(NeuralNet::default(&[4,16,4,2])) } else { None }
-        };
+            color,
+            neuralnet: neuralnet,
+        }
     }
 
     pub fn sense(&self) -> Arc<Vec<Arc<Effect>>> {
@@ -33,39 +34,36 @@ impl Dot {
     }
 
     pub fn act(&self, tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>, cause: Arc<Vec<Arc<Effect>>>) {
-        let act: Action = rand::random();
-        match act {
-            Action::DARKEN => {
-                match self.reach(1) {
-                    Some(pos) => {
-                        match tx.send((cause,Arc::new(Effect {
-                            pos: Some(pos),
-                            typ: Some(EffectType::OPACITY),
-                            val: Some(0.1)
-                        }))) {
-                            Ok(_) => {},
-                            Err(msg) => println!("{}",msg)
-                        }
-                    },
-                    None => {}
-                };
-            },
-            Action::LIGHTEN => {
-                match self.reach(1) {
-                    Some(pos) => {
-                        match tx.send((cause,Arc::new(Effect {
-                            pos: Some(pos),
-                            typ: Some(EffectType::OPACITY),
-                            val: Some(-0.1)
-                        }))) {
-                            Ok(_) => {},
-                            Err(msg) => println!("{}",msg)
-                        }
-                    },
-                    None => {}
-                };
-            },
-            _ => {}
+        let mut inputs: Vec<bool> = Vec::new();
+        for it in cause.iter() {
+            if let Some(val) = it.val {
+                inputs.push(if val >= 0.5 { true } else { false});
+            } else { inputs.push(false) }
+        }
+        let outputs = self.neuralnet.forward(inputs);
+        let mut x = 0;
+        let mut y = 0;
+        let mut action = Action::IDLE;
+        if outputs[0] { y -= 1; }
+        if outputs[1] { x += 1; }
+        if outputs[2] { y += 1; }
+        if outputs[3] { x -= 1; }
+        if outputs[4] && !outputs[5] { action = Action::DARKEN; }
+        if outputs[5] && !outputs[4] { action = Action::LIGHTEN; }
+        if action != Action::IDLE {
+            match self.reach(x,y) {
+                Some(pos) => {
+                    match tx.send((cause,Arc::new(Effect {
+                        pos: Some(pos),
+                        typ: Some(EffectType::OPACITY),
+                        val: Some(if action == Action::DARKEN { 0.1 } else { -0.1 })
+                    }))) {
+                        Ok(_) => {},
+                        Err(msg) => println!("{}",msg)
+                    }
+                },
+                None => {}
+            };
         };
     }
 
@@ -96,11 +94,10 @@ impl Dot {
         return self.color[3] >= 0.5;
     }
 
-    fn reach(&self, dist: u8) -> Option<Coord> {
-        let mut rng = rand::thread_rng();
-        let x = self.pos.x + rng.gen_range(dist as i8 * -1, (dist+1) as i8) as f64;
-        let y = self.pos.y + rng.gen_range(dist as i8 * -1, (dist+1) as i8) as f64;
-        if 0.0 > x || x >= 50.0 || 0.0 > y || y >= 50.0 || (x == self.pos.x && y == self.pos.y) { return None; }
+    fn reach(&self, offset_x: i8, offset_y: i8) -> Option<Coord> {
+        let x = self.pos.x + offset_x as f64;
+        let y = self.pos.y + offset_y as f64;
+        if 0.0 > x || x >= 50.0 || 0.0 > y || y >= 50.0 { return None; }
         return Some(Coord { x: x, y: y });
     }
 }

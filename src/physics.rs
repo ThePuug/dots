@@ -8,25 +8,33 @@ use common::coord::Coord;
 use common::threadpool::ThreadPool;
 use dots::Dot;
 use effects::{Effect,EffectType};
+use neuralnets::{INeuralNet,INeuralNetFactory};
 use scene::Scene;
 
-pub struct Physics {
-    pub scene: Scene,
+pub struct Physics<TNeuralNet, TNeuralNetFactory>
+    where TNeuralNet : INeuralNet,
+    TNeuralNetFactory : INeuralNetFactory<TNeuralNet> {
+    pub scene: Scene<TNeuralNet>,
     rx: Receiver<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
     tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
-    pool: ThreadPool
+    threadpool: ThreadPool,
+    neuralnetfactory: Arc<TNeuralNetFactory>,
 }
 
-impl Physics {
-    pub fn new(pool: ThreadPool,
-               scene: Scene) -> Physics {
+impl<TNeuralNet,TNeuralNetFactory> Physics<TNeuralNet,TNeuralNetFactory> 
+    where TNeuralNet : INeuralNet,
+    TNeuralNetFactory : INeuralNetFactory<TNeuralNet> {
+    pub fn new(threadpool: ThreadPool,
+               scene: Scene<TNeuralNet>,
+               neuralnetfactory: TNeuralNetFactory) -> Physics<TNeuralNet,TNeuralNetFactory> {
         let (tx, rx) = mpsc::channel();
 
         let physics = Physics {
             scene,
             rx,
             tx,
-            pool
+            threadpool,
+            neuralnetfactory: Arc::new(neuralnetfactory),
         };
 
         // create the origin of life
@@ -57,7 +65,7 @@ impl Physics {
                         let dot = dot.clone();
                         let tx = self.tx.clone();
                         let effect = effect.clone();
-                        self.pool.run(move || {
+                        self.threadpool.run(move || {
                             let mut dot = dot.lock().unwrap();
                             dot.update(tx, effect);
                         });
@@ -69,17 +77,17 @@ impl Physics {
                 Some(pos) => {
                     let dots = self.scene.dots.clone();
                     let mut dots = dots.lock().unwrap();
-                    let mut dot: Arc<Mutex<Dot>>;
+                    let dot: Arc<Mutex<Dot<TNeuralNet>>>;
                     match dots.entry(pos) {
                         Occupied(e) => dot = e.into_mut().clone(),
-                        Vacant(e) => dot = e.insert(Arc::new(Mutex::new(Dot::new(pos,[0.0,0.0,0.0,0.0])))).clone()
+                        Vacant(e) => dot = e.insert(Arc::new(Mutex::new(Dot::new(pos,[0.0,0.0,0.0,0.0],self.neuralnetfactory.create())))).clone()
                     }
 
                     // when the effect is defined, we want to update
                     match effect.typ {
                         Some(_) => {
                             let tx = self.tx.clone();
-                            self.pool.run(move || {
+                            self.threadpool.run(move || {
                                 let mut dot = dot.lock().unwrap();
                                 dot.update(tx, effect);
                             });
@@ -124,7 +132,7 @@ impl Physics {
 
                             // and ask the dot to respond
                             let tx = self.tx.clone();
-                            self.pool.run(move || {
+                            self.threadpool.run(move || {
                                 let dot = dot.lock().unwrap();
                                 dot.act(tx, Arc::new(ret_causes));
                             });
