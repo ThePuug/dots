@@ -39,7 +39,7 @@ impl<TNeuralNet,TNeuralNetFactory> Physics<TNeuralNet,TNeuralNetFactory>
 
         // create the origin of life
         physics.queue((Arc::new(Vec::new()),Arc::new(Effect {
-            pos: Some(Coord{x: 5.0, y:5.0}),
+            pos: Some(Coord{x: physics.scene.size.x / 2.0, y:physics.scene.size.y / 2.0}),
             typ: Some(EffectType::OPACITY),
             val: Some(1.0)
         })));
@@ -83,7 +83,7 @@ impl<TNeuralNet,TNeuralNetFactory> Physics<TNeuralNet,TNeuralNetFactory>
                         Vacant(e) => dot = e.insert(Arc::new(Mutex::new(Dot::new(pos,[0.0,0.0,0.0,0.0],self.neuralnetfactory.create())))).clone()
                     }
 
-                    // when the effect is defined, we want to update
+                    // when the effect is defined, we want to update the dot
                     match effect.typ {
                         Some(_) => {
                             let tx = self.tx.clone();
@@ -106,7 +106,11 @@ impl<TNeuralNet,TNeuralNetFactory> Physics<TNeuralNet,TNeuralNetFactory>
                                                 match cause.typ {
                                                     Some(typ) => {
                                                         match typ {
-                                                            EffectType::OPACITY => ret_causes.push(Arc::new(Effect { pos: cause.pos, typ: Some(typ), val: Some(dot.lock().unwrap().color[3]) })),
+                                                            EffectType::OPACITY => ret_causes.push(Arc::new(Effect { 
+                                                                pos: cause.pos, 
+                                                                typ: Some(typ), 
+                                                                val: Some(dot.lock().unwrap().color[3]) 
+                                                            })),
                                                             _ => {}
                                                         }
                                                     },
@@ -117,7 +121,11 @@ impl<TNeuralNet,TNeuralNetFactory> Physics<TNeuralNet,TNeuralNetFactory>
                                                 match cause.typ {
                                                     Some(typ) => {
                                                         match typ {
-                                                            EffectType::OPACITY => ret_causes.push(Arc::new(Effect { pos: cause.pos, typ: Some(typ), val: Some(0.0) })),
+                                                            EffectType::OPACITY => ret_causes.push(Arc::new(Effect { 
+                                                                pos: cause.pos, 
+                                                                typ: Some(typ), 
+                                                                val: Some(0.0) 
+                                                            })),
                                                             _ => {}
                                                         }
                                                     },
@@ -133,7 +141,7 @@ impl<TNeuralNet,TNeuralNetFactory> Physics<TNeuralNet,TNeuralNetFactory>
                             // and ask the dot to respond
                             let tx = self.tx.clone();
                             self.threadpool.run(move || {
-                                let dot = dot.lock().unwrap();
+                                let mut dot = dot.lock().unwrap();
                                 dot.act(tx, Arc::new(ret_causes));
                             });
                         }

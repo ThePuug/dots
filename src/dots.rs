@@ -33,7 +33,7 @@ impl<TNeuralNet> Dot<TNeuralNet>
         ]);
     }
 
-    pub fn act(&self, tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>, cause: Arc<Vec<Arc<Effect>>>) {
+    pub fn act(&mut self, tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>, cause: Arc<Vec<Arc<Effect>>>) {
         let mut inputs: Vec<bool> = Vec::new();
         for it in cause.iter() {
             if let Some(val) = it.val {
@@ -43,24 +43,19 @@ impl<TNeuralNet> Dot<TNeuralNet>
         let outputs = self.neuralnet.forward(inputs);
         let mut x = 0;
         let mut y = 0;
-        let mut action = Action::IDLE;
         if outputs[0] { y -= 1; }
         if outputs[1] { x += 1; }
         if outputs[2] { y += 1; }
         if outputs[3] { x -= 1; }
-        if outputs[4] && !outputs[5] { action = Action::DARKEN; }
-        if outputs[5] && !outputs[4] { action = Action::LIGHTEN; }
+        let action = if outputs[4] { Action::DARKEN } else { Action::IDLE };
         if action != Action::IDLE {
             match self.reach(x,y) {
                 Some(pos) => {
-                    match tx.send((cause,Arc::new(Effect {
+                    tx.send((cause,Arc::new(Effect {
                         pos: Some(pos),
                         typ: Some(EffectType::OPACITY),
-                        val: Some(if action == Action::DARKEN { 0.1 } else { -0.1 })
-                    }))) {
-                        Ok(_) => {},
-                        Err(msg) => println!("{}",msg)
-                    }
+                        val: Some(0.1)
+                    }))).unwrap()
                 },
                 None => {}
             };
@@ -68,12 +63,15 @@ impl<TNeuralNet> Dot<TNeuralNet>
     }
 
     pub fn tick(&self, tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>) {
+        // age every tick
+        tx.send((
+                Arc::new(vec![Arc::new(Effect { pos: None, typ: Some(EffectType::TICK), val: Some(1.0)})]),
+                Arc::new(Effect { pos: Some(self.pos), typ: Some(EffectType::OPACITY), val: Some(-0.01)}))
+            ).unwrap();
+
+        // alive dots sense every tick
         if self.is_alive() {
-            let cause = self.sense();
-            match tx.send((cause,Arc::new(Effect { pos: Some(self.pos), typ: None, val: None }))) {
-                Ok(_) => {},
-                Err(msg) => println!("{}",msg)
-            }
+            tx.send((self.sense(),Arc::new(Effect { pos: Some(self.pos), typ: None, val: None }))).unwrap()
         }
     }
 
@@ -82,7 +80,11 @@ impl<TNeuralNet> Dot<TNeuralNet>
             Some(typ) => {
                 match typ {
                     EffectType::TICK => self.tick(tx),
-                    EffectType::OPACITY => self.color[3] += effect.val.unwrap()
+                    EffectType::OPACITY => {
+                        self.color[3] += effect.val.unwrap();
+                        if self.color[3] < 0.0 { self.color[3] = 0.0 }
+                        if self.color[3] > 1.0 { self.color[3] = 1.0 }
+                    }
                 }
             },
             None => {}
