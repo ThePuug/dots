@@ -35,7 +35,7 @@ fn main() {
     let open_gl_version = OpenGL::V3_2;
     let scene_size = Coord { x: 50.0, y: 50.0 };
     let scale = 10;
-    let num_workers = 1;
+    let num_workers = 4;
     let thread_pool = ThreadPool::new(num_workers);
     let window = WindowSettings::new("Dots", [scene_size.x * scale as f64, scene_size.y * scale as f64])
         .exit_on_esc(true)

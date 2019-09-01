@@ -156,7 +156,5 @@ impl<TIntelligence> IDot for Dot<TIntelligence>
         }
     }
 
-    fn collides_with(&self, coord: Coord) -> bool {
-        if self.pos.x == coord.x && self.pos.y == coord.y { true } else { false }
-    }
+    fn collides_with(&self, coord: Coord) -> bool { self.pos == coord }
 }

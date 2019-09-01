@@ -39,7 +39,7 @@ impl<TDot,TDotFactory,TIntelligence> Physics<TDot,TDotFactory,TIntelligence>
 
         // create the origin of life
         physics.queue((Arc::new(Vec::new()),Arc::new(Effect {
-            pos: Some(Coord{x: 10.0, y: 10.0}),
+            pos: Some(Coord{x: 25.0, y: 25.0}),
             typ: Some(EffectType::OPACITY),
             val: Some(1.0)
         })));
@@ -58,9 +58,7 @@ impl<TDot,TDotFactory,TIntelligence> Physics<TDot,TDotFactory,TIntelligence>
 
             match effect.pos {
                 // when the pos is not defined, then send the effect to the scene for propagation
-                None => {
-                    self.scene.apply((causes,effect));
-                }
+                None => { self.scene.apply((causes,effect)); }
 
                 // if the pos is defined ensure the dot exists and create it if it does not
                 Some(pos) => {
@@ -75,7 +73,7 @@ impl<TDot,TDotFactory,TIntelligence> Physics<TDot,TDotFactory,TIntelligence>
                     }
 
                     match effect.typ {
-                        // when there is an effect, we want to update the dot
+                        // when there is a typ, we want to update the dot
                         Some(_) => {
                             self.thread_pool.run(move || {
                                 let mut dot = dot.lock().unwrap();
@@ -83,20 +81,20 @@ impl<TDot,TDotFactory,TIntelligence> Physics<TDot,TDotFactory,TIntelligence>
                             });
                         },
 
-                        // when there is no effect, then the dot is sensing
+                        // when there is no typ, then the dot is sensing
                         None => {
 
                             // so populate the vals of the causes
                             let mut ret_causes: Vec<Arc<Effect>> = Vec::new();
                             for cause in causes.iter() {
-                                match self.scene.at(cause.pos.unwrap()) { // TODO: will panic if pos is None
+                                match self.scene.at(cause.pos.unwrap()) { // BUG: will panic if pos is None
 
                                     // sense attributes of dots that exist
                                     Some(dot) => {
                                         ret_causes.push(Arc::new(Effect { 
                                             pos: cause.pos, 
                                             typ: cause.typ, 
-                                            val: dot.lock().unwrap().describe(cause.typ.unwrap()) // TODO: will panic if typ is None
+                                            val: dot.lock().unwrap().describe(cause.typ.unwrap())
                                         }));
                                     },
 
