@@ -1,45 +1,45 @@
-use std::collections::hash_map::Entry::{Occupied,Vacant};
+use std::marker::PhantomData;
 use std::sync::Arc;
-use std::sync::mpsc;
 use std::sync::mpsc::{Sender,Receiver};
 use std::sync::Mutex;
 
 use common::coord::Coord;
 use common::threadpool::ThreadPool;
-use dots::Dot;
+use dots::{IDot,IDotFactory};
 use effects::{Effect,EffectType};
-use neuralnets::{INeuralNet,INeuralNetFactory};
+use intelligence::{IIntelligence};
 use scene::Scene;
 
-pub struct Physics<TNeuralNet, TNeuralNetFactory>
-    where TNeuralNet : INeuralNet,
-    TNeuralNetFactory : INeuralNetFactory<TNeuralNet> {
-    pub scene: Scene<TNeuralNet>,
+pub struct Physics<TDot,TDotFactory,TIntelligence> {
+    pub scene: Scene<TDot>,
     rx: Receiver<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
     tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
-    threadpool: ThreadPool,
-    neuralnetfactory: Arc<TNeuralNetFactory>,
+    thread_pool: ThreadPool,
+    dot_factory: TDotFactory,
+    _t_intelligence: PhantomData<TIntelligence>,
 }
 
-impl<TNeuralNet,TNeuralNetFactory> Physics<TNeuralNet,TNeuralNetFactory> 
-    where TNeuralNet : INeuralNet,
-    TNeuralNetFactory : INeuralNetFactory<TNeuralNet> {
-    pub fn new(threadpool: ThreadPool,
-               scene: Scene<TNeuralNet>,
-               neuralnetfactory: TNeuralNetFactory) -> Physics<TNeuralNet,TNeuralNetFactory> {
-        let (tx, rx) = mpsc::channel();
-
+impl<TDot,TDotFactory,TIntelligence> Physics<TDot,TDotFactory,TIntelligence>
+    where TDot : IDot,
+          TIntelligence : IIntelligence,
+          TDotFactory : IDotFactory<TDot,TIntelligence> {
+    pub fn new(thread_pool: ThreadPool,
+               scene: Scene<TDot>,
+               tx: Sender<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
+               rx: Receiver<(Arc<Vec<Arc<Effect>>>,Arc<Effect>)>,
+               dot_factory: TDotFactory) -> Physics<TDot,TDotFactory,TIntelligence> {
         let physics = Physics {
             scene,
             rx,
             tx,
-            threadpool,
-            neuralnetfactory: Arc::new(neuralnetfactory),
+            thread_pool,
+            dot_factory,
+            _t_intelligence: PhantomData,
         };
 
         // create the origin of life
         physics.queue((Arc::new(Vec::new()),Arc::new(Effect {
-            pos: Some(Coord{x: physics.scene.size.x / 2.0, y:physics.scene.size.y / 2.0}),
+            pos: Some(Coord{x: 10.0, y: 10.0}),
             typ: Some(EffectType::OPACITY),
             val: Some(1.0)
         })));
@@ -52,101 +52,73 @@ impl<TNeuralNet,TNeuralNetFactory> Physics<TNeuralNet,TNeuralNetFactory>
     }
 
     pub fn apply(&self) {
-        loop {
-            let msg = self.rx.try_recv();
-            if msg.is_err() { break; }
-            let (causes,effect) = msg.unwrap();
+        // drain the physics queue
+        let mut rx_iter = self.rx.try_iter();
+        while let Some((causes,effect)) = rx_iter.next() {
 
             match effect.pos {
-                // when the pos is not defined, then send the effect to all dots and continue
+                // when the pos is not defined, then send the effect to the scene for propagation
                 None => {
-                    let dots = self.scene.dots.clone();
-                    for (_,dot) in dots.lock().unwrap().iter() {
-                        let dot = dot.clone();
-                        let tx = self.tx.clone();
-                        let effect = effect.clone();
-                        self.threadpool.run(move || {
-                            let mut dot = dot.lock().unwrap();
-                            dot.update(tx, effect);
-                        });
-                    }
-                    continue;
+                    self.scene.apply((causes,effect));
                 }
 
-                // if the pos is defined ensure the dot exists
+                // if the pos is defined ensure the dot exists and create it if it does not
                 Some(pos) => {
-                    let dots = self.scene.dots.clone();
-                    let mut dots = dots.lock().unwrap();
-                    let dot: Arc<Mutex<Dot<TNeuralNet>>>;
-                    match dots.entry(pos) {
-                        Occupied(e) => dot = e.into_mut().clone(),
-                        Vacant(e) => dot = e.insert(Arc::new(Mutex::new(Dot::new(pos,[0.0,0.0,0.0,0.0],self.neuralnetfactory.create())))).clone()
+                    let dot: Arc<Mutex<TDot>>;
+                    match self.scene.at(pos) {
+                        Some(d) => {
+                            dot = d;
+                        },
+                        None => {
+                            dot = self.scene.push_dot(self.dot_factory.create(pos,[0.0,0.0,0.0,0.0]));
+                        }
                     }
 
-                    // when the effect is defined, we want to update the dot
                     match effect.typ {
+                        // when there is an effect, we want to update the dot
                         Some(_) => {
-                            let tx = self.tx.clone();
-                            self.threadpool.run(move || {
+                            self.thread_pool.run(move || {
                                 let mut dot = dot.lock().unwrap();
-                                dot.update(tx, effect);
+                                dot.apply_effect((causes,effect));
                             });
                         },
 
-                        // when the effect is undefined, then the dot is sensing
+                        // when there is no effect, then the dot is sensing
                         None => {
+
                             // so populate the vals of the causes
                             let mut ret_causes: Vec<Arc<Effect>> = Vec::new();
                             for cause in causes.iter() {
-                                match cause.pos {
-                                    Some(pos) => {
-                                        match dots.entry(pos) {
-                                            Occupied(e) => {
-                                                let dot = e.into_mut().clone();
-                                                match cause.typ {
-                                                    Some(typ) => {
-                                                        match typ {
-                                                            EffectType::OPACITY => ret_causes.push(Arc::new(Effect { 
-                                                                pos: cause.pos, 
-                                                                typ: Some(typ), 
-                                                                val: Some(dot.lock().unwrap().color[3]) 
-                                                            })),
-                                                            _ => {}
-                                                        }
-                                                    },
-                                                    None => {}
-                                                }
-                                            },
-                                            Vacant(_) => {
-                                                match cause.typ {
-                                                    Some(typ) => {
-                                                        match typ {
-                                                            EffectType::OPACITY => ret_causes.push(Arc::new(Effect { 
-                                                                pos: cause.pos, 
-                                                                typ: Some(typ), 
-                                                                val: Some(0.0) 
-                                                            })),
-                                                            _ => {}
-                                                        }
-                                                    },
-                                                    None => {}
-                                                }
-                                            }
-                                        }
+                                match self.scene.at(cause.pos.unwrap()) { // TODO: will panic if pos is None
+
+                                    // sense attributes of dots that exist
+                                    Some(dot) => {
+                                        ret_causes.push(Arc::new(Effect { 
+                                            pos: cause.pos, 
+                                            typ: cause.typ, 
+                                            val: dot.lock().unwrap().describe(cause.typ.unwrap()) // TODO: will panic if typ is None
+                                        }));
                                     },
-                                    None => {}
+
+                                    // return None val when dot does not exist
+                                    None => {
+                                        ret_causes.push(Arc::new(Effect { 
+                                            pos: cause.pos, 
+                                            typ: cause.typ,
+                                            val: None
+                                        }));
+                                    }
                                 }
                             }
 
-                            // and ask the dot to respond
-                            let tx = self.tx.clone();
-                            self.threadpool.run(move || {
+                            // once causes are populated, allow the dot to respond
+                            self.thread_pool.run(move || {
                                 let mut dot = dot.lock().unwrap();
-                                dot.act(tx, Arc::new(ret_causes));
+                                dot.act(Arc::new(ret_causes));
                             });
                         }
                     }
-                },
+                }
             }
         }
     }

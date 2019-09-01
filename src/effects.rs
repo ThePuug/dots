@@ -6,8 +6,10 @@ pub struct Effect {
     pub val: Option<f32>
 }
 
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(PartialEq, Eq, Copy, Clone, Hash)]
 pub enum EffectType {
     TICK,
-    OPACITY
+    OPACITY,
+    X,
+    Y,
 }
