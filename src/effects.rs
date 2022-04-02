@@ -1,15 +1,15 @@
-use common::coord::Coord;
+use crate::common::coord::Coord;
 
+#[derive(Debug)]
 pub struct Effect {
     pub pos: Option<Coord>,
     pub typ: Option<EffectType>,
     pub val: Option<f32>
 }
 
-#[derive(PartialEq, Eq, Copy, Clone, Hash)]
+#[derive(PartialEq, Eq, Copy, Clone, Hash, Debug)]
 pub enum EffectType {
-    TICK,
-    OPACITY,
-    X,
-    Y,
+    OPACITY
+    // X,
+    // Y,
 }

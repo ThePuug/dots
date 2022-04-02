@@ -1,21 +1,28 @@
 {
-    // See https://go.microsoft.com/fwlink/?LinkId=733558 
-    // for the documentation about the tasks.json format
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "type": "cargo",
-            "subcommand": "test",
-            "problemMatcher": [
-                "$rustc"
-            ]
-        },
-        {
-            "type": "cargo",
-            "subcommand": "check",
-            "problemMatcher": [
-                "$rustc"
-            ]
-        }
-    ]
+"version": "2.0.0",
+"tasks": [{
+    "label": "cargo build",
+    "type": "shell",
+    "command": "cargo build",
+    "args": [],
+    "group": {
+    "kind": "build",
+    "isDefault": true
+    }
+},
+{
+    "label": "cargo run",
+    "type": "shell",
+    "command": "cargo",
+    "args": [
+        "run"
+        // "--release",
+        // "--",
+        // "arg1"
+    ],
+    "group": {
+        "kind": "build",
+        "isDefault": true
+    }
+    }]
 }

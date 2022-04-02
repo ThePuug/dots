@@ -2,18 +2,23 @@
 name = "dots"
 version = "0.1.0"
 authors = ["Reed Debaets <reed.debaets@gmail.com>"]
-build = "build.rs"
+#build = "build.rs"
+edition = "2021"
 
 [[bin]]
 name = "dots"
 
 [dependencies]
+bitvec = "*"
+flume = "*"
 piston = "*"
-#piston2d-graphics = "*"
+piston2d-graphics = "*"
 pistoncore-glutin_window = "*"
 piston2d-opengl_graphics = "*"
-rand = "*"
+rand = "0.8.4"
+futures = "*"
+tokio = {version = "~1", features = ["full"] }
 
-[dependencies.piston2d-graphics]
-version = "*"
-features = ["glyph_cache_rusttype"]
+#[dependencies.piston2d-graphics]
+#version = "*"
+#features = ["glyph_cache_rusttype"]
