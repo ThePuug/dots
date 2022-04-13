@@ -5,38 +5,44 @@ mod dots;
 mod effects;
 mod scene;
 
+use crate::app::{App};
+use crate::common::coord::{Coord};
+use crate::dots::{DotFactory};
+use crate::effects::{Effect,EffectType};
+use crate::scene::{Scene};
+
 use futures::lock::{Mutex};
 use glutin_window::{GlutinWindow};
 use opengl_graphics::{GlGraphics,GlyphCache,OpenGL,TextureSettings};
 use piston::event_loop::*;
 use piston::input::*;
 use piston::window::{WindowSettings};
+use rand::prelude::*;
 use std::sync::{Arc};
 use flume::{unbounded,Sender,Receiver};
 use tokio::task::{spawn,JoinHandle};
 
-use app::{App};
-use common::coord::{Coord};
-use dots::{DotFactory};
-use effects::{Effect,EffectType};
-use scene::{Scene};
-
 #[tokio::main]
 async fn main() {
 
-    let scene_size = Coord{x: 50.0, y: 40.0}; 
+    let scene_size = Coord{x: 60.0, y: 40.0}; 
     let scale = 10;
 
     let (tx,rx): (Sender<Arc<Effect>>,Receiver<Arc<Effect>>) = unbounded();
-    tx.send_async(Arc::new(Effect {
-        pos: Some(Coord{x: (scene_size.x/2.0).floor(), y: (scene_size.y/2.0).floor()}),
-        typ: Some(EffectType::OPACITY),
-        val: Some(1.0)
-    })).await.unwrap();
+    let mut rng: StdRng = SeedableRng::from_entropy();
+    for n in 0..4 {
+        let seq = rng.gen::<[u8;8]>();
+        for _ in 0..10 {
+            tx.send_async(Arc::new(Effect {
+                pos: Some(Coord{x: (scene_size.x*(f64::from(n/2)+1.0)/3.0).floor(), y: (scene_size.y/2.0).floor()+(if n%2==0 {1.0} else {-1.0})}),
+                typ: Some(EffectType::OPACITY),
+                val: Some(seq)
+            })).await.unwrap();
+        }
+    }
 
     let scene = Arc::new(Scene::new(scene_size,scale));
     let _ = spawn_propagator(tx.clone(), rx.clone(), scene.clone());
-    // let _ = spawn_propagator(tx.clone(), rx.clone(), scene.clone());
 
     let open_gl_version = OpenGL::V3_2;
     let window: GlutinWindow = WindowSettings::new("Dots", [scene_size.x * scale as f64, scene_size.y * scale as f64])
@@ -66,7 +72,7 @@ fn spawn_propagator(tx: Sender<Arc<Effect>>, rx: Receiver<Arc<Effect>>, scene: A
 
             let pos = effect.pos.unwrap();
             if scene.at(pos).await.is_none() {
-                let dot = Some(dot_factory.create(pos,0.0).await);
+                let dot = Some(dot_factory.create(pos,effect.val.unwrap(),0.0).await);
                 scene.push_dot(pos,dot.unwrap().clone()).await;
             }
 

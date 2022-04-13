@@ -1,23 +1,26 @@
 use bitvec::prelude::*;
+use rand::prelude::*;
 
+#[derive(Clone)]
 pub struct Dna {
-  pub color: [f32;3],
-  pub reaction_time: u16
+  pub seq: [u8;8]
 }
 
 impl Dna {
-  fn f8(a: &BitVec, b: &BitVec, i: usize) -> f32 { return Dna::u8(&a,&b,i) as f32 / u8::MAX as f32; }
-  // fn u16(a: &BitVec, b: &BitVec, i: usize) -> u16 { return (Dna::u8(a,b,i) as u16) << 8 | Dna::u8(a,b,i+8) as u16; }
-  fn u8(a: &BitVec, b: &BitVec, i: usize) -> u8 { return a[i..i+4].load::<u8>() << 4 | b[i..i+4].load::<u8>(); }
-  fn b2(a: &BitVec, b: &BitVec, i: usize) -> u8 { return u8::from(a[i]) << 1 | b[i] as u8; }
+  fn f(&self, n: usize, i: usize) -> f32 {
+    return  f32::try_from(i16::try_from(self.u(n,i)).unwrap()).unwrap() / f32::try_from(2i16.pow(u32::try_from(n).unwrap())).unwrap();
+  }
+  fn u(&self, n: usize, i: usize) -> u32 { return self.seq.view_bits::<Lsb0>()[i..i+n].load::<u32>(); }
 
-  pub fn new(a: BitVec, b: BitVec) -> Dna {
-    let mut color: [f32;3] = [0.0; 3];
-    color[if 0 >= Dna::b2(&a,&b,0) {0} else {1}] = Dna::f8(&a,&b,2);
-    color[if 1 >= Dna::b2(&a,&b,0) {1} else {2}] = Dna::f8(&a,&b,10);
-    return Dna {
-      color,
-      reaction_time: 1000u16 + Dna::u8(&a,&b,11) as u16,
-    }
+  pub fn color(&self) -> [f32;3] { return [self.f(8,0),self.f(8,8),self.f(8,16)]; }
+  
+  pub fn combine(&mut self, other: [u8;8]) {
+    let mut rng: StdRng = SeedableRng::from_entropy();
+    let mask = rng.gen::<[u8;8]>();
+    for i in 0..8 { self.seq[i] = (mask[i] & self.seq[i]) | ( !mask[i] & other[i]); }
+  }
+
+  pub fn new(seq: [u8;8]) -> Dna {
+    return Dna { seq };
   }
 }

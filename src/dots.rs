@@ -1,4 +1,3 @@
-use bitvec::prelude::*;
 use flume::{Sender};
 use futures::lock::{Mutex};
 use rand::prelude::*;
@@ -21,11 +20,8 @@ impl DotFactory {
         }
     }
 
-    pub async fn create(&self, pos: Coord, opacity: f32) -> Arc<Mutex<Dot>> {
-        let mut rng: StdRng = SeedableRng::from_entropy();
-        let a = rng.gen::<usize>().view_bits::<Lsb0>().to_bitvec();
-        let b = rng.gen::<usize>().view_bits::<Lsb0>().to_bitvec();
-        let dna = Dna::new(a, b);
+    pub async fn create(&self, pos: Coord, seq: [u8;8], opacity: f32) -> Arc<Mutex<Dot>> {
+        let dna = Dna::new(seq);
 
         let dot = Arc::new(Mutex::new(Dot::new(
             pos,
@@ -41,11 +37,7 @@ impl DotFactory {
 }
 
 async fn idler(dot: Arc<Mutex<Dot>>) {
-    let idle_duration: Duration;
-    {
-        let dot = dot.lock().await;
-        idle_duration = Duration::from_millis(dot.dna.reaction_time as u64);
-    }
+    let idle_duration = Duration::from_millis(250u64);
     let idler = sleep(idle_duration);
     tokio::pin!(idler);
 
@@ -130,7 +122,7 @@ impl Dot {
                     self.tx.send_async(Arc::new(Effect {
                         pos: Some(pos),
                         typ: Some(EffectType::OPACITY),
-                        val: Some(0.25)
+                        val: Some(self.dna.seq)
                     })).await.unwrap();
                 },
                 None => {}
@@ -141,13 +133,19 @@ impl Dot {
     pub fn describe(&self) -> ((f32,f32),([f32;3],f32)) {
         return (
             (self.pos.x as f32,self.pos.y as f32),
-            (self.dna.color,self.opacity)
+            (self.dna.color(),self.opacity)
         );
     }
 
     pub fn apply_effect(&mut self, effect: Arc<Effect>) {
         match effect.typ.unwrap() {
-            EffectType::OPACITY => { self.opacity = f32::max(0.0,f32::min(1.0,self.opacity + effect.val.unwrap())); },
+            EffectType::OPACITY => { 
+                if self.is_alive() { self.opacity = f32::max(0.0,f32::min(1.0,self.opacity + 0.1)); } 
+                else {
+                    self.opacity = f32::max(0.0,f32::min(1.0,self.opacity + 0.1));
+                    if self.is_alive() { self.dna.combine(effect.val.unwrap()); }
+                }
+            },
             // EffectType::X => self.pos.x += effect.val.unwrap() as f64,
             // EffectType::Y => self.pos.y += effect.val.unwrap() as f64,
         }
@@ -155,7 +153,7 @@ impl Dot {
 
     // pub fn collides_with(&self, coord: Coord) -> bool { self.pos == coord }
 
-    fn is_alive(&self) -> bool { return self.opacity >= 0.2; }
+    fn is_alive(&self) -> bool { return self.opacity >= 0.3; }
 
     fn reach(&self, offset_x: i8, offset_y: i8) -> Option<Coord> {
         let x = self.pos.x + offset_x as f64;
