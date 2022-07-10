@@ -25,13 +25,12 @@ use tokio::task::{spawn,JoinHandle};
 #[tokio::main]
 async fn main() {
 
-    let scene_size = Coord{x: 60.0, y: 40.0}; 
+    let scene_size = Coord{x: 60.0, y: 60.0}; 
     let scale = 10;
 
     let (tx,rx): (Sender<Arc<Effect>>,Receiver<Arc<Effect>>) = unbounded();
-    let mut rng: StdRng = SeedableRng::from_entropy();
     for n in 0..4 {
-        let seq = rng.gen::<[u8;8]>();
+        let seq:[u8;8] = thread_rng().gen();
         for _ in 0..10 {
             tx.send_async(Arc::new(Effect {
                 pos: Some(Coord{x: (scene_size.x*(f64::from(n/2)+1.0)/3.0).floor(), y: (scene_size.y/2.0).floor()+(if n%2==0 {1.0} else {-1.0})}),

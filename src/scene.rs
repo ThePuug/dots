@@ -23,16 +23,6 @@ impl Scene {
 
     pub async fn at(&self, pos: Coord) -> Option<Arc<Mutex<Dot>>> {
         if let Some(dot) = self.dots.lock().await.get(&pos) { return Some(dot.clone()); }
-
-        // TODO: quickly get nearby dots to do full collision check on
-        //       will be needed at the point dots can move around
-        // let hashmap = self.dots.lock().await;
-        // let mut nearby_dots: Vec<Arc<Mutex<Dot>>> = Vec::new();
-        // for mutex in dots.iter() {
-        //     let dot = mutex.lock().await;
-        //     if dot.collides_with(pos) { return Some(mutex.clone()); }
-        // }
-
         None
     }
 

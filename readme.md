@@ -1,8 +1,11 @@
 # Contribute
+- on windows - install microsoft c++ build tools with the following features: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+    - desktop development with c++
+    - english language pack
 - install rust: https://www.rust-lang.org/tools/install
-- Preferred IDE is VS Code: 
-- - install VS code: link tbd
-- - install extensions: rust-lang.rust, vadimcn.vscode-lldb
-- - debug with `F5`
+- preferred ide is vs code: 
+    - install vs code: https://code.visualstudio.com/download
+    - install extensions: rust-lang.rust-analyzer, vadimcn.vscode-lldb
+    - debug with `F5`
 - build with `cargo build`
 - run with `cargo run`
