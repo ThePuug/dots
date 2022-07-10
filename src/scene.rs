@@ -40,11 +40,11 @@ impl Scene {
             let dot = dot.lock().await;
             if dot.task_tick.is_none() { dots.remove(key); } 
             else {
-                let ((x,y),(rgb,opacity)) = dot.describe();
+                let ((x,y),(rgb,energy)) = dot.describe();
                 ret.push((x as f64 * self.scale as f64 + 0.5 * self.scale as f64,
                             y as f64 * self.scale as f64 + 0.5 * self.scale as f64,
                             0.5 * self.scale as f64,
-                            (rgb,opacity)
+                            (rgb,energy)
                         ));
             }
         }

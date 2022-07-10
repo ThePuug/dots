@@ -42,7 +42,7 @@ impl App {
 
         // Clear the screen.
         self.gl.draw(args.viewport(), |_c, gl| {            
-            clear([1.0,1.0,1.0,1.0], gl);
+            clear([0.0,0.0,0.0,1.0], gl);
         });
 
         // draw every dot

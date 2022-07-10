@@ -4,9 +4,13 @@ use rand::distributions::{Distribution, Standard};
 #[derive(PartialEq, Eq)]
 pub enum Direction {
     NORTH,
+    NORTHEAST,
     EAST,
+    SOUTHEAST,
     SOUTH,
-    WEST
+    SOUTHWEST,
+    WEST,
+    NORTHWEST,
 }
 
 impl Direction {
@@ -20,11 +24,15 @@ impl Direction {
 
 impl Distribution<Direction> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Direction {
-        match rng.gen_range(0..4) {
+        match rng.gen_range(0..8) {
             0 => Direction::NORTH,
-            1 => Direction::EAST,
-            2 => Direction::SOUTH,
-            _ => Direction::WEST
+            1 => Direction::NORTHEAST,
+            2 => Direction::EAST,
+            3 => Direction::SOUTHEAST,
+            4 => Direction::SOUTH,
+            5 => Direction::SOUTHWEST,
+            6 => Direction::WEST,
+            _ => Direction::NORTHWEST,
         }
     }
 }
