@@ -26,15 +26,15 @@ use tokio::task::{spawn, JoinHandle};
 
 #[tokio::main]
 async fn main() {
-    let scene_size = Coord { x: 54.0, y: 45.0 };
+    let scene_size = Coord { x: 90.0, y: 54.0 };
     let scale = 10;
     let (tx, rx): (Sender<(Coord, Arc<Effect>)>, Receiver<(Coord, Arc<Effect>)>) = unbounded();
 
     let scene = Arc::new(Scene::new(scene_size, scale));
     let dot_factory = DotFactory::new(tx.clone());
 
-    for x in 0..scene_size.x as u16 {
-        for y in 0..scene_size.y as u16 {
+    for x in 0..scene_size.x as u8 {
+        for y in 0..scene_size.y as u8 {
             let pos = Coord {
                 x: x.into(),
                 y: y.into(),
@@ -59,6 +59,9 @@ async fn main() {
         }
     }
 
+    let _ = spawn_propagator(rx.clone(), scene.clone());
+    let _ = spawn_propagator(rx.clone(), scene.clone());
+    let _ = spawn_propagator(rx.clone(), scene.clone());
     let _ = spawn_propagator(rx.clone(), scene.clone());
 
     let open_gl_version = OpenGL::V3_2;
@@ -96,7 +99,7 @@ fn spawn_propagator(rx: Receiver<(Coord, Arc<Effect>)>, scene: Arc<Scene>) -> Jo
         while let Ok((pos, effect)) = rx.recv_async().await {
             if let Some(dot) = scene.at(pos).await {
                 let mut dot = dot.lock().await;
-                dot.apply_effect(effect);
+                dot.apply_effect(effect).await;
             }
         }
     });

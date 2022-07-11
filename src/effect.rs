@@ -1,7 +1,8 @@
+use crate::common::coord::Coord;
 use crate::common::dna::Dna;
 
-#[derive(PartialEq, Eq, Copy, Clone, Hash, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Effect {
-    ENERGY(u16),
+    ENERGY(f32, Option<[f32; 3]>, Option<Coord>),
     SEED(Dna),
 }
