@@ -32,7 +32,7 @@ async fn main() {
     let (tx, rx): (Sender<(Coord, Arc<Effect>)>, Receiver<(Coord, Arc<Effect>)>) = unbounded();
 
     let scene = Arc::new(Scene::new(scene_size, scale));
-    let dot_factory = DotFactory::new(tx.clone());
+    let dot_factory = DotFactory::new(tx.clone(), scene.clone());
 
     for x in 0..scene_size.x as u16 {
         for y in 0..scene_size.y as u16 {

@@ -14,6 +14,20 @@ pub enum Direction {
 }
 
 impl Direction {
+    // Maps a net output index (0..8) to a direction, matching the enum order.
+    pub fn from_index(i: usize) -> Direction {
+        match i % 8 {
+            0 => Direction::NORTH,
+            1 => Direction::NORTHEAST,
+            2 => Direction::EAST,
+            3 => Direction::SOUTHEAST,
+            4 => Direction::SOUTH,
+            5 => Direction::SOUTHWEST,
+            6 => Direction::WEST,
+            _ => Direction::NORTHWEST,
+        }
+    }
+
     pub fn opposite(&self) -> Direction {
         if *self == Direction::NORTH { return Direction::SOUTH; }
         else if *self == Direction::SOUTH { return Direction::NORTH; }

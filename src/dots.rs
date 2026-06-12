@@ -1,8 +1,10 @@
 use crate::action::Action;
 use crate::common::coord::Coord;
 use crate::common::direction::Direction;
+use crate::common::brain::{Brain, N_IN, N_OUT};
 use crate::common::dna::{self, combine, Dna};
 use crate::effect::Effect;
+use crate::scene::Scene;
 use flume::Sender;
 use futures::lock::Mutex;
 use rand::prelude::*;
@@ -21,11 +23,12 @@ pub struct Cell {
 
 pub struct DotFactory {
     tx: Sender<(Coord, Arc<Effect>)>,
+    scene: Arc<Scene>,
 }
 
 impl DotFactory {
-    pub fn new(tx: Sender<(Coord, Arc<Effect>)>) -> DotFactory {
-        DotFactory { tx }
+    pub fn new(tx: Sender<(Coord, Arc<Effect>)>, scene: Arc<Scene>) -> DotFactory {
+        DotFactory { tx, scene }
     }
 
     pub async fn create(
@@ -44,17 +47,18 @@ impl DotFactory {
         });
 
         let ptr = cell.clone();
+        let scene = self.scene.clone();
         let mut dot = cell.dot.lock().await;
         cell.render.store(dot.pack_render(), Ordering::Relaxed);
         dot.task_tick = Some(spawn(async move {
-            ticker(ptr).await;
+            ticker(ptr, scene).await;
         }));
         drop(dot);
         return cell;
     }
 }
 
-async fn ticker(cell: Arc<Cell>) {
+async fn ticker(cell: Arc<Cell>, scene: Arc<Scene>) {
     let growth_rate = Duration::from_millis(u8::MAX as u64 * 4);
     let ticker = sleep(Duration::from_millis(0));
     tokio::pin!(ticker);
@@ -69,8 +73,10 @@ async fn ticker(cell: Arc<Cell>) {
                         dot.dna = None;
                         dot.reaction_time = None;
                         dot.age = 0.0;
+                        dot.refresh_brain();
                     } else {
-                        dot.act().await;
+                        let senses = dot.neighbors().map(|c| scene.sense(c));
+                        dot.act(senses).await;
                     }
                 } else {
                     dot.energy += 0.005;
@@ -92,6 +98,26 @@ pub struct Dot {
     reaction_time: Option<Duration>,
     tx: Sender<(Coord, Arc<Effect>)>,
     pub task_tick: Option<JoinHandle<()>>,
+    brain: Option<Brain>,
+}
+
+// Read the net's choice: the highest-scoring output selects both the action
+// and its direction. No heuristics — the genome's weights alone decide
+// (ties resolve to the lower index, which is vanishingly rare for f32 scores).
+fn decide(out: &[f32; N_OUT]) -> Option<(Action, Direction)> {
+    let mut best = 0;
+    for i in 1..N_OUT {
+        if out[i] > out[best] {
+            best = i;
+        }
+    }
+    if best < 8 {
+        Some((Action::DIGEST, Direction::from_index(best)))
+    } else if best < 16 {
+        Some((Action::SEED, Direction::from_index(best - 8)))
+    } else {
+        None // IDLE
+    }
 }
 
 impl Dot {
@@ -104,17 +130,32 @@ impl Dot {
             reaction_time: None,
             tx,
             task_tick: None,
+            brain: dna.map(|d| Brain::from_seq(&d.seq)),
         };
         return dot;
     }
 
-    pub async fn act(&mut self) {
+    pub async fn act(&mut self, senses: [u32; 8]) {
+        let brain = match &self.brain {
+            Some(brain) => brain,
+            None => return,
+        };
+
+        // raw perception: each neighbour's (r, g, b), own energy, bias unit.
+        let mut input = [0.0f32; N_IN];
+        for (n, &s) in senses.iter().enumerate() {
+            input[3 * n] = ((s >> 24) & 0xff) as f32 / 255.0;
+            input[3 * n + 1] = ((s >> 16) & 0xff) as f32 / 255.0;
+            input[3 * n + 2] = ((s >> 8) & 0xff) as f32 / 255.0;
+        }
+        input[24] = self.energy;
+        input[25] = 1.0;
+
+        let decision = decide(&brain.forward(&input));
         let dna = self.dna.unwrap();
-        let action: Action = thread_rng().gen();
-        let direction: Direction = thread_rng().gen();
-        match action {
-            Action::IDLE => {}
-            Action::DIGEST => {
+        match decision {
+            None => {} // IDLE
+            Some((Action::DIGEST, direction)) => {
                 self.tx
                     .send_async((
                         self.reach(direction, 1.0),
@@ -123,13 +164,30 @@ impl Dot {
                     .await
                     .unwrap();
             }
-            Action::SEED => {
+            Some((Action::SEED, direction)) => {
                 self.tx
                     .send_async((self.reach(direction, 1.0), Arc::new(Effect::SEED(dna))))
                     .await
                     .unwrap();
             }
-        };
+            Some((Action::IDLE, _)) => {}
+        }
+    }
+
+    // Re-decode the brain from the current DNA. Called whenever DNA changes so
+    // the brain always matches the genome (None when the dot is dead/empty).
+    fn refresh_brain(&mut self) {
+        self.brain = self.dna.map(|d| Brain::from_seq(&d.seq));
+    }
+
+    // The 8 neighbour coords in net-output direction order, so senses[i] lines
+    // up with Direction::from_index(i) and with where the dot will act.
+    fn neighbors(&self) -> [Coord; 8] {
+        let mut n = [self.pos; 8];
+        for (i, c) in n.iter_mut().enumerate() {
+            *c = self.reach(Direction::from_index(i), 1.0);
+        }
+        n
     }
 
     /// Pack the cell's current appearance into RGBA8 for the lock-free render
@@ -183,6 +241,7 @@ impl Dot {
                     } else {
                         self.dna = Some(Dna::new(other.seq));
                     }
+                    self.refresh_brain();
                 }
             }
         }
@@ -259,12 +318,29 @@ mod tests {
         assert!(rgb.iter().all(|c| (c - 1.0).abs() <= eps), "dead is white");
         assert!((a - (0.5 + 0.4 / 2.0)).abs() <= eps, "dead opacity ramps with energy");
 
-        let dna = Dna::new([0x1234_5678_9abc_def0, 0x0fed_cba9_8765_4321]);
+        let dna = Dna::new([0x1234_5678_9abc_def0_u64; dna::SIZE]);
         let alive = Dot::new(Coord { x: 0.0, y: 0.0 }, Some(dna), 0.3, tx);
         let (rgb, a) = unpack(alive.pack_render());
         for i in 0..3 {
             assert!((rgb[i] - dna.color[i]).abs() <= eps, "live shows DNA colour [{}]", i);
         }
         assert!((a - 1.0).abs() <= eps, "live is opaque");
+    }
+
+    // decide() must map output indices to the right action+direction space:
+    // 0..8 DIGEST, 8..16 SEED, 16 IDLE.
+    #[test]
+    fn decide_maps_output_index_to_action() {
+        let mut out = [0.0f32; N_OUT];
+        out[2] = 1.0;
+        assert!(matches!(decide(&out), Some((Action::DIGEST, _))));
+
+        let mut out = [0.0f32; N_OUT];
+        out[10] = 1.0;
+        assert!(matches!(decide(&out), Some((Action::SEED, _))));
+
+        let mut out = [0.0f32; N_OUT];
+        out[16] = 1.0;
+        assert!(decide(&out).is_none());
     }
 }

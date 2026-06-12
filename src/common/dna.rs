@@ -3,7 +3,12 @@ use rand::prelude::*;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-pub const SIZE: usize = 2;
+pub const SIZE: usize = 23;
+
+/// Bits of `seq` consumed by `Dna::new` for the colour + digest_mask traits
+/// (3×6 + 3×8). The neural-net weights occupy the bits after this — see
+/// `common::brain`, which decodes them from the same `seq`.
+pub const TRAIT_BITS: usize = 42;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Dna {
@@ -43,10 +48,18 @@ impl Hash for Dna {
 }
 
 pub fn combine(mine: Dna, other: Dna) -> Dna {
-    let mask: [u64; SIZE] = thread_rng().gen();
+    let mut rng = thread_rng();
+    let mask: [u64; SIZE] = rng.gen();
     let mut seq: [u64; SIZE] = [0; SIZE];
     for (i, it) in mask.into_iter().enumerate() {
         seq[i] = (it & mine.seq[i]) | (!it & other.seq[i]);
+    }
+    // mutation: flip a few random bits so the gene pool can innovate new
+    // weights/colours/diets, not just reshuffle the parents' alleles.
+    let bits = SIZE * 64;
+    for _ in 0..rng.gen_range(0..=3) {
+        let b = rng.gen_range(0..bits);
+        seq[b / 64] ^= 1u64 << (b % 64);
     }
     Dna::new(seq)
 }
