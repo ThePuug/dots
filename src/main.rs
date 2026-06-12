@@ -34,8 +34,8 @@ async fn main() {
     let scene = Arc::new(Scene::new(scene_size, scale));
     let dot_factory = DotFactory::new(tx.clone());
 
-    for x in 0..scene_size.x as u8 {
-        for y in 0..scene_size.y as u8 {
+    for x in 0..scene_size.x as u16 {
+        for y in 0..scene_size.y as u16 {
             let pos = Coord {
                 x: x.into(),
                 y: y.into(),
