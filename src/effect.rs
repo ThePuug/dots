@@ -4,5 +4,7 @@ use crate::common::dna::Dna;
 #[derive(Copy, Clone, Debug)]
 pub enum Effect {
     ENERGY(f32, Option<[f32; 3]>, Option<Coord>),
-    SEED(Dna),
+    // genome, plus the energy the parent invested — credited to the offspring as
+    // its starting energy on a successful seed, dissipated if the seed is wasted.
+    SEED(Dna, f32),
 }

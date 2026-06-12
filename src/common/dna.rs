@@ -7,14 +7,19 @@ use std::time::Duration;
 pub const SIZE: usize = 23;
 
 /// Bits of `seq` consumed by `Dna::new` for the heritable traits — colour
-/// (3×6), digest_mask (3×8), and reaction_time (8). The neural-net weights
-/// occupy the bits after this — see `common::brain`, which decodes them from
-/// the same `seq`.
-pub const TRAIT_BITS: usize = 50;
+/// (3×6), digest_mask (3×8), reaction_time (8), seed_invest (8). The neural-net
+/// weights occupy the bits after this — see `common::brain`, which decodes them
+/// from the same `seq`.
+pub const TRAIT_BITS: usize = 58;
 
 /// Floor on a dot's reaction_time so metabolism can't evolve down to a 0ms
 /// busy loop. The 8-bit gene adds 0..256ms on top, giving a [16, 271]ms range.
 pub const REACTION_FLOOR_MS: u64 = 16;
+
+/// Maximum energy a dot will invest in one seed; the 8-bit gene scales [0, this].
+/// The cost is conserved (it becomes the offspring's starting energy), so this
+/// only bounds the evolvable range — like every other trait's decode.
+pub const SEED_INVEST_MAX: f32 = 0.25;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Dna {
@@ -24,6 +29,8 @@ pub struct Dna {
     pub color: [f32; 3],
     pub digest_mask: [f32; 3],
     pub reaction_time: Duration,
+    /// Energy this dot invests into each seed (transferred to the offspring).
+    pub seed_invest: f32,
     /// Identity: a colour derived from the *whole* genome so genetically similar
     /// dots look alike on screen. Shown to the viewer; not sensed by other dots.
     pub display_color: [f32; 3],
@@ -44,6 +51,7 @@ impl Dna {
             ],
             digest_mask: [s.f(8), s.f(8), s.f(8)], //[0.0, 0.0, 0.0],
             reaction_time: Duration::from_millis(REACTION_FLOOR_MS + s.u(8) as u64),
+            seed_invest: s.f(8) * SEED_INVEST_MAX,
             display_color: genome_color(&seq),
         };
     }
@@ -136,5 +144,13 @@ mod tests {
         assert_eq!(Dna::new(seq).reaction_time, Dna::new(seq).reaction_time);
         let ms = Dna::new(seq).reaction_time.as_millis() as u64;
         assert!(ms >= REACTION_FLOOR_MS && ms <= REACTION_FLOOR_MS + 255);
+    }
+
+    #[test]
+    fn seed_invest_is_inherited_and_bounded() {
+        let seq = [0x0f1e_2d3c_4b5a_6978_u64; SIZE];
+        assert_eq!(Dna::new(seq).seed_invest, Dna::new(seq).seed_invest);
+        let inv = Dna::new(seq).seed_invest;
+        assert!(inv >= 0.0 && inv <= SEED_INVEST_MAX);
     }
 }

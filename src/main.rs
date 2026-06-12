@@ -48,7 +48,7 @@ async fn main() {
                             x: x.into(),
                             y: y.into(),
                         },
-                        Arc::new(Effect::SEED(Dna::new(thread_rng().gen::<[u64; SIZE]>()))),
+                        Arc::new(Effect::SEED(Dna::new(thread_rng().gen::<[u64; SIZE]>()), 0.0)),
                     ))
                     .await
                     .unwrap();

@@ -175,8 +175,12 @@ impl Dot {
                     .unwrap();
             }
             Some((Action::SEED, direction)) => {
+                // pay the seed cost up front, whatever the dot can afford; it
+                // rides along to provision the offspring if the seed lands.
+                let invest = dna.seed_invest.min(self.energy);
+                self.energy -= invest;
                 self.tx
-                    .send_async((self.reach(direction, 1.0), Arc::new(Effect::SEED(dna))))
+                    .send_async((self.reach(direction, 1.0), Arc::new(Effect::SEED(dna, invest))))
                     .await
                     .unwrap();
             }
@@ -252,7 +256,7 @@ impl Dot {
                         .unwrap();
                 }
             }
-            Effect::SEED(other) => {
+            Effect::SEED(other, provision) => {
                 if !self.is_alive() {
                     if let Some(mine) = self.dna {
                         // fertilise: recombine, and inherit metabolism from the child
@@ -262,6 +266,8 @@ impl Dot {
                     } else {
                         self.dna = Some(Dna::new(other.seq));
                     }
+                    // receive the parent's investment as starting energy
+                    self.energy = (self.energy + provision).min(1.0);
                     self.refresh_brain();
                 }
             }
