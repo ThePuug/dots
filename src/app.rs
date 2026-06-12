@@ -42,22 +42,20 @@ impl App {
         let millis_since = self.last_render.elapsed().as_millis();
         self.last_render = Instant::now();
 
-        // Clear the screen.
-        self.gl.draw(args.viewport(), |_c, gl| {
+        // snapshot the world, then clear + draw every dot in a SINGLE gl.draw()
+        // so the whole frame is one OpenGL flush instead of one per dot
+        let dots = self.scene.describe().await;
+        self.gl.draw(args.viewport(), |c, gl| {
             clear([0.0, 0.0, 0.0, 1.0], gl);
-        });
-
-        // draw every dot
-        for (x, y, sz, ([r, g, b], opc)) in self.scene.describe().await {
-            self.gl.draw(args.viewport(), |c, gl| {
+            for (x, y, sz, ([r, g, b], opc)) in &dots {
                 rectangle(
-                    [r, g, b, opc],
-                    rectangle::centered_square(x, y, sz),
+                    [*r, *g, *b, *opc],
+                    rectangle::centered_square(*x, *y, *sz),
                     c.transform,
                     gl,
                 );
-            });
-        }
+            }
+        });
 
         // calculate fps as average of frame_average_count frames
         let frame_average_count = 30;
