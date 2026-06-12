@@ -27,8 +27,8 @@ use tokio::task::{spawn, JoinHandle};
 
 #[tokio::main]
 async fn main() {
-    let scene_size = Coord { x: 250.0, y: 150.0 };
-    let scale = 5;
+    let scene_size = Coord { x: 320.0, y: 180.0 };
+    let scale = 4;
     let (tx, rx): (Sender<(Coord, Arc<Effect>)>, Receiver<(Coord, Arc<Effect>)>) = unbounded();
 
     let scene = Arc::new(Scene::new(scene_size, scale));
