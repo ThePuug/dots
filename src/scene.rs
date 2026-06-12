@@ -26,12 +26,12 @@ impl Scene {
         self.dots.get(&pos).map(|cell| cell.value().clone())
     }
 
-    /// Lock-free perception: a neighbour's packed render snapshot, or 0 (an
-    /// off-grid void) if no cell exists there. No dot is locked and no Arc is
-    /// cloned — just a shard read and an atomic load.
+    /// Lock-free perception: a neighbour's phenotype snapshot (how it presents
+    /// to others), or 0 (an off-grid void) if no cell exists there. No dot is
+    /// locked and no Arc is cloned — just a shard read and an atomic load.
     pub fn sense(&self, pos: Coord) -> u32 {
         match self.dots.get(&pos) {
-            Some(cell) => cell.value().render.load(Ordering::Relaxed),
+            Some(cell) => cell.value().sense.load(Ordering::Relaxed),
             None => 0,
         }
     }

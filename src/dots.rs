@@ -12,12 +12,22 @@ use std::sync::Arc;
 use tokio::task::{spawn, JoinHandle};
 use tokio::time::{sleep, Duration, Instant};
 
-/// A grid cell: the simulation state behind an async Mutex, plus a lock-free
-/// packed render snapshot (RGBA8). The dot refreshes `render` after every
-/// mutation so the renderer can read a cell's appearance without taking its lock.
+/// A grid cell: the simulation state behind an async Mutex, plus two lock-free
+/// RGBA8 snapshots refreshed after every mutation. `sense` is the phenotype
+/// other dots perceive; `render` is the whole-genome colour shown to the viewer.
+/// Both are read without taking the dot's lock.
 pub struct Cell {
+    pub sense: AtomicU32,
     pub render: AtomicU32,
     pub dot: Mutex<Dot>,
+}
+
+impl Cell {
+    // Recompute both snapshots from the dot's current state.
+    pub fn refresh_snapshots(&self, dot: &Dot) {
+        self.sense.store(dot.pack_sense(), Ordering::Relaxed);
+        self.render.store(dot.pack_render(), Ordering::Relaxed);
+    }
 }
 
 pub struct DotFactory {
@@ -41,6 +51,7 @@ impl DotFactory {
             None => None,
         };
         let cell = Arc::new(Cell {
+            sense: AtomicU32::new(0),
             render: AtomicU32::new(0),
             dot: Mutex::new(Dot::new(pos, dna, energy, self.tx.clone())),
         });
@@ -48,7 +59,7 @@ impl DotFactory {
         let ptr = cell.clone();
         let scene = self.scene.clone();
         let mut dot = cell.dot.lock().await;
-        cell.render.store(dot.pack_render(), Ordering::Relaxed);
+        cell.refresh_snapshots(&dot);
         dot.task_tick = Some(spawn(async move {
             ticker(ptr, scene).await;
         }));
@@ -81,8 +92,8 @@ async fn ticker(cell: Arc<Cell>, scene: Arc<Scene>) {
                     dot.energy += 0.005;
                 }
 
-                // refresh the lock-free render snapshot after mutating
-                cell.render.store(dot.pack_render(), Ordering::Relaxed);
+                // refresh the lock-free snapshots after mutating
+                cell.refresh_snapshots(&dot);
                 ticker.as_mut().reset(Instant::now() + dot.reaction_time.unwrap_or(growth_rate));
             }
         }
@@ -189,17 +200,27 @@ impl Dot {
         n
     }
 
-    /// Pack the cell's current appearance into RGBA8 for the lock-free render
-    /// snapshot. This folds in the rule the scene used to apply: a live dot
-    /// shows its DNA colour fully opaque; a dead dot shows white with opacity
-    /// ramping from its energy. Position is the map key, so it isn't packed.
-    pub fn pack_render(&self) -> u32 {
+    // Pack appearance into RGBA8. A live dot shows `alive_rgb` fully opaque; a
+    // dead/empty cell shows white with opacity ramping from its energy. Position
+    // is the map key, so it isn't packed.
+    fn pack(&self, alive_rgb: [f32; 3]) -> u32 {
         let (rgb, alpha): ([f32; 3], f32) = match self.dna {
-            Some(dna) => (dna.color, 1.0),
+            Some(_) => (alive_rgb, 1.0),
             None => ([1.0, 1.0, 1.0], 0.5 + self.energy / 2.0),
         };
         let q = |f: f32| -> u32 { (f.clamp(0.0, 1.0) * 255.0 + 0.5) as u32 };
         (q(rgb[0]) << 24) | (q(rgb[1]) << 16) | (q(rgb[2]) << 8) | q(alpha)
+    }
+
+    /// What neighbours perceive: the phenotype colour the dot presents.
+    pub fn pack_sense(&self) -> u32 {
+        self.pack(self.dna.map_or([1.0; 3], |d| d.color))
+    }
+
+    /// What the viewer sees: a colour derived from the whole genome, so
+    /// genetically-similar dots look alike (the phenotype is hidden from view).
+    pub fn pack_render(&self) -> u32 {
+        self.pack(self.dna.map_or([1.0; 3], |d| d.display_color))
     }
 
     pub async fn apply_effect(&mut self, effect: Arc<Effect>) {
@@ -306,25 +327,35 @@ mod tests {
         )
     }
 
-    // pack_render must reproduce the (rgb, opacity) the old describe()+scene
-    // path produced: live -> DNA colour, opaque; dead -> white, 0.5 + energy/2.
+    // sense packs the phenotype (what neighbours see); render packs the
+    // whole-genome colour (what the viewer sees). Dead cells are white with
+    // energy-based opacity in both.
     #[test]
-    fn pack_render_round_trips_to_old_appearance() {
+    fn sense_is_phenotype_render_is_genome_colour() {
         let eps = 1.0 / 255.0;
         let (tx, _rx): (Sender<(Coord, Arc<Effect>)>, _) = flume::unbounded();
 
         let dead = Dot::new(Coord { x: 1.0, y: 2.0 }, None, 0.4, tx.clone());
-        let (rgb, a) = unpack(dead.pack_render());
-        assert!(rgb.iter().all(|c| (c - 1.0).abs() <= eps), "dead is white");
-        assert!((a - (0.5 + 0.4 / 2.0)).abs() <= eps, "dead opacity ramps with energy");
+        for packed in [dead.pack_sense(), dead.pack_render()] {
+            let (rgb, a) = unpack(packed);
+            assert!(rgb.iter().all(|c| (c - 1.0).abs() <= eps), "dead is white");
+            assert!((a - (0.5 + 0.4 / 2.0)).abs() <= eps, "dead opacity ramps with energy");
+        }
 
         let dna = Dna::new([0x1234_5678_9abc_def0_u64; dna::SIZE]);
         let alive = Dot::new(Coord { x: 0.0, y: 0.0 }, Some(dna), 0.3, tx);
+
+        let (rgb, a) = unpack(alive.pack_sense());
+        for i in 0..3 {
+            assert!((rgb[i] - dna.color[i]).abs() <= eps, "sense shows phenotype [{}]", i);
+        }
+        assert!((a - 1.0).abs() <= eps);
+
         let (rgb, a) = unpack(alive.pack_render());
         for i in 0..3 {
-            assert!((rgb[i] - dna.color[i]).abs() <= eps, "live shows DNA colour [{}]", i);
+            assert!((rgb[i] - dna.display_color[i]).abs() <= eps, "render shows genome [{}]", i);
         }
-        assert!((a - 1.0).abs() <= eps, "live is opaque");
+        assert!((a - 1.0).abs() <= eps);
     }
 
     // decide() must map output indices to the right action+direction space:

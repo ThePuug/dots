@@ -19,9 +19,14 @@ pub const REACTION_FLOOR_MS: u64 = 16;
 #[derive(Clone, Copy, Debug)]
 pub struct Dna {
     pub seq: [u64; SIZE],
+    /// Phenotype: how the dot presents to others. This is what neighbours sense
+    /// and what predation targets — decoded from just the first 18 bits.
     pub color: [f32; 3],
     pub digest_mask: [f32; 3],
     pub reaction_time: Duration,
+    /// Identity: a colour derived from the *whole* genome so genetically similar
+    /// dots look alike on screen. Shown to the viewer; not sensed by other dots.
+    pub display_color: [f32; 3],
 }
 
 impl Dna {
@@ -39,8 +44,39 @@ impl Dna {
             ],
             digest_mask: [s.f(8), s.f(8), s.f(8)], //[0.0, 0.0, 0.0],
             reaction_time: Duration::from_millis(REACTION_FLOOR_MS + s.u(8) as u64),
+            display_color: genome_color(&seq),
         };
     }
+}
+
+// A locality-preserving projection of the whole genome to RGB: each channel is
+// the Hamming distance from the genome to a fixed pseudo-random anchor, squashed
+// through a sigmoid. Small genetic change -> small Hamming change -> small colour
+// change, so a lineage holds a colour region that drifts as the genome drifts —
+// unlike a hash, which would scatter near-identical genomes to random colours.
+fn genome_color(seq: &[u64; SIZE]) -> [f32; 3] {
+    let n = (SIZE * 64) as f32;
+    let scale = (n * 0.25).sqrt(); // ~1 std of Hamming between random genomes
+    let mut out = [0.5f32; 3];
+    for (c, slot) in out.iter_mut().enumerate() {
+        let mut hamming = 0u32;
+        for (w, &word) in seq.iter().enumerate() {
+            hamming += (word ^ anchor(c, w)).count_ones();
+        }
+        let x = (hamming as f32 - n / 2.0) / scale;
+        *slot = 1.0 / (1.0 + (-x).exp());
+    }
+    out
+}
+
+// Deterministic pseudo-random reference word for a (channel, word) pair
+// (splitmix64-style mixing) — the fixed anchors the projection measures against.
+fn anchor(c: usize, w: usize) -> u64 {
+    let mut x = (c as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (w as u64 + 1).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
 }
 
 impl PartialEq for Dna {

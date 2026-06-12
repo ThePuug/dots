@@ -21,7 +21,6 @@ use piston::event_loop::*;
 use piston::input::*;
 use piston::window::WindowSettings;
 use rand::prelude::*;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::task::{spawn, JoinHandle};
 
@@ -99,8 +98,8 @@ fn spawn_propagator(rx: Receiver<(Coord, Arc<Effect>)>, scene: Arc<Scene>) -> Jo
             if let Some(cell) = scene.at(pos) {
                 let mut dot = cell.dot.lock().await;
                 dot.apply_effect(effect).await;
-                // refresh the lock-free render snapshot after mutating
-                cell.render.store(dot.pack_render(), Ordering::Relaxed);
+                // refresh the lock-free snapshots after mutating
+                cell.refresh_snapshots(&dot);
             }
         }
     });
