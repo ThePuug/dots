@@ -44,7 +44,7 @@ impl App {
 
         // snapshot the world, then clear + draw every dot in a SINGLE gl.draw()
         // so the whole frame is one OpenGL flush instead of one per dot
-        let dots = self.scene.describe().await;
+        let dots = self.scene.describe();
         self.gl.draw(args.viewport(), |c, gl| {
             clear([0.0, 0.0, 0.0, 1.0], gl);
             for (x, y, sz, ([r, g, b], opc)) in &dots {

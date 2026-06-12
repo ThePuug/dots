@@ -17,6 +17,7 @@ pistoncore-glutin_window = "*"
 piston2d-opengl_graphics = "*"
 rand = "0.8.4"
 futures = "*"
+dashmap = "6"
 tokio = {version = "~1", features = ["full"] }
 
 #[dependencies.piston2d-graphics]

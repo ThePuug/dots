@@ -21,6 +21,7 @@ use piston::event_loop::*;
 use piston::input::*;
 use piston::window::WindowSettings;
 use rand::prelude::*;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::task::{spawn, JoinHandle};
 
@@ -40,9 +41,7 @@ async fn main() {
                 y: y.into(),
             };
 
-            scene
-                .push_dot(pos, dot_factory.create(pos, None, 1.0).await)
-                .await;
+            scene.push_dot(pos, dot_factory.create(pos, None, 1.0).await);
             if x % 9 == 4 && y % 9 == 4 {
                 for _ in 0..2 {
                     tx.send_async((
@@ -97,9 +96,11 @@ async fn main() {
 fn spawn_propagator(rx: Receiver<(Coord, Arc<Effect>)>, scene: Arc<Scene>) -> JoinHandle<()> {
     return spawn(async move {
         while let Ok((pos, effect)) = rx.recv_async().await {
-            if let Some(dot) = scene.at(pos).await {
-                let mut dot = dot.lock().await;
+            if let Some(cell) = scene.at(pos) {
+                let mut dot = cell.dot.lock().await;
                 dot.apply_effect(effect).await;
+                // refresh the lock-free render snapshot after mutating
+                cell.render.store(dot.pack_render(), Ordering::Relaxed);
             }
         }
     });
