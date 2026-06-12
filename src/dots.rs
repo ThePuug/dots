@@ -7,7 +7,6 @@ use crate::effect::Effect;
 use crate::scene::Scene;
 use flume::Sender;
 use futures::lock::Mutex;
-use rand::prelude::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::task::{spawn, JoinHandle};
@@ -235,9 +234,10 @@ impl Dot {
             Effect::SEED(other) => {
                 if !self.is_alive() {
                     if let Some(mine) = self.dna {
-                        self.dna = Some(combine(mine, other));
-                        self.reaction_time =
-                            Some(Duration::from_millis(thread_rng().gen::<u8>() as u64));
+                        // fertilise: recombine, and inherit metabolism from the child
+                        let child = combine(mine, other);
+                        self.reaction_time = Some(child.reaction_time);
+                        self.dna = Some(child);
                     } else {
                         self.dna = Some(Dna::new(other.seq));
                     }
